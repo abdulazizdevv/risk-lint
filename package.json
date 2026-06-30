@@ -1,0 +1,35 @@
+{
+  "name": "risk-lint",
+  "version": "1.0.0",
+  "description": "CLI tool to detect risky AI-generated code patterns",
+  "type": "module",
+  "bin": {
+    "risk-lint": "./dist/cli.js"
+  },
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "build": "tsc",
+    "start": "node dist/cli.js"
+  },
+  "keywords": [
+    "cli",
+    "code-quality",
+    "ai-code",
+    "scanner"
+  ],
+  "license": "MIT",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "fast-glob": "^3.3.2",
+    "picocolors": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}
