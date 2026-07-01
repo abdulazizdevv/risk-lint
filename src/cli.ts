@@ -351,6 +351,30 @@ function collectDeclaredNames(frontmatter: string) {
   return declared
 }
 
+function collectTemplateScopedNames(template: string) {
+  const scoped = new Set<string>()
+
+  for (const match of template.matchAll(/\(\s*\[([^\]]+)\]\s*\)\s*=>/g)) {
+    for (const name of match[1].split(",")) {
+      const cleanName = name.trim().match(/^[A-Za-z_$][\w$]*/)
+
+      if (cleanName) scoped.add(cleanName[0])
+    }
+  }
+
+  for (const match of template.matchAll(
+    /\(\s*([A-Za-z_$][\w$]*)\s*\)\s*=>/g,
+  )) {
+    scoped.add(match[1])
+  }
+
+  for (const match of template.matchAll(/\b([A-Za-z_$][\w$]*)\s*=>/g)) {
+    scoped.add(match[1])
+  }
+
+  return scoped
+}
+
 function checkAstroTemplateIdentifiers(file: string, content: string) {
   if (!file.endsWith(".astro")) return
 
@@ -361,6 +385,7 @@ function checkAstroTemplateIdentifiers(file: string, content: string) {
   const template = sections[2]
   const templateOffset = sections[0].length - template.length
   const declared = collectDeclaredNames(frontmatter)
+  const scoped = collectTemplateScopedNames(template)
   const allowed = new Set([
     "Astro",
     "Array",
@@ -381,13 +406,57 @@ function checkAstroTemplateIdentifiers(file: string, content: string) {
     const expression = match[1].trim()
 
     if (!/^[A-Za-z_$][\w$]*$/.test(expression)) continue
-    if (allowed.has(expression) || declared.has(expression)) continue
+    if (allowed.has(expression) || declared.has(expression) || scoped.has(expression)) {
+      continue
+    }
 
     const location = getLocation(content, templateOffset + match.index + 1)
     addIssue(
       "high",
       file,
       `Possible undefined Astro template variable: ${expression}`,
+      location.line,
+      location.column,
+    )
+  }
+}
+
+function checkAstroFrontmatterIdentifiers(file: string, content: string) {
+  if (!file.endsWith(".astro")) return
+
+  const sections = content.match(/^---\n([\s\S]*?)\n---/)
+  if (!sections) return
+
+  const frontmatter = sections[1]
+  const frontmatterOffset = content.indexOf(frontmatter)
+  const declared = collectDeclaredNames(frontmatter)
+  const allowed = new Set([
+    "Astro",
+    "console",
+    "false",
+    "null",
+    "true",
+    "undefined",
+  ])
+
+  for (const match of frontmatter.matchAll(
+    /^\s*([A-Za-z_$][\w$]*)\s*;?\s*$/gm,
+  )) {
+    const name = match[1]
+
+    if (allowed.has(name) || declared.has(name)) continue
+    if (/^(import|export|const|let|var|type|interface|function|class)$/.test(name)) {
+      continue
+    }
+
+    const location = getLocation(
+      content,
+      frontmatterOffset + match.index + match[0].indexOf(name),
+    )
+    addIssue(
+      "high",
+      file,
+      `Possible stray Astro frontmatter identifier: ${name}`,
       location.line,
       location.column,
     )
@@ -454,9 +523,10 @@ function parseBuildMessage(output: string) {
   )
 }
 
-async function checkBuildSyntax() {
+async function checkBuildSyntax(files?: string[]) {
   const packageManager = await getPackageManager()
   const args = packageManager === "yarn" ? ["build"] : ["run", "build"]
+  const changedFiles = files ? new Set(files) : undefined
 
   try {
     await execFileAsync(packageManager, args, {
@@ -475,6 +545,10 @@ async function checkBuildSyntax() {
     const message = execError.killed
       ? "Project build timed out while checking syntax"
       : parseBuildMessage(output)
+
+    if (changedFiles && !changedFiles.has(location.file)) {
+      return
+    }
 
     addIssue("high", location.file, message, location.line, location.column)
   }
@@ -502,9 +576,19 @@ async function main() {
   )
   writeLine()
 
-  if (scanAll) {
-    const buildSpinner = startSpinner("Checking project syntax")
-    await checkBuildSyntax()
+  const files = scanAll
+    ? await fg(patterns, {
+        ignore,
+        dot: true,
+        onlyFiles: true,
+      })
+    : getChangedFiles()
+
+  if (scanAll || files.length > 0) {
+    const buildSpinner = startSpinner(
+      scanAll ? "Checking project syntax" : "Checking changed file syntax",
+    )
+    await checkBuildSyntax(scanAll ? undefined : files)
     const buildIssues = issues.filter(
       (issue) =>
         issue.message.includes("build") ||
@@ -521,13 +605,6 @@ async function main() {
   const scanSpinner = startSpinner(
     scanAll ? "Scanning source files" : "Scanning changed files",
   )
-  const files = scanAll
-    ? await fg(patterns, {
-        ignore,
-        dot: true,
-        onlyFiles: true,
-      })
-    : getChangedFiles()
 
   for (const file of files) {
     const content = await fs.readFile(file, "utf8")
@@ -538,6 +615,7 @@ async function main() {
     checkTodos(file, content)
     checkLargeFile(file, content)
     checkAstroTemplateIdentifiers(file, content)
+    checkAstroFrontmatterIdentifiers(file, content)
   }
   scanSpinner.succeed(
     scanAll
