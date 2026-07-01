@@ -1,95 +1,160 @@
 # risk-lint
 
-Find risky patterns in JavaScript and TypeScript projects before they reach
-production.
+<p align="center">
+  <img src="https://img.shields.io/badge/risk--lint-code%20safety-ff4757?style=for-the-badge" alt="risk-lint badge">
+  <img src="https://img.shields.io/badge/TypeScript-ready-3178c6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript ready">
+  <img src="https://img.shields.io/badge/CLI-fast-2ed573?style=for-the-badge&logo=gnubash&logoColor=white" alt="Fast CLI">
+  <img src="https://img.shields.io/badge/license-MIT-ffa502?style=for-the-badge" alt="MIT license">
+</p>
 
-`risk-lint` is a small CLI scanner for codebases that move fast, especially
-projects with AI-assisted code. It looks for secrets, debug leftovers, weak
-TypeScript spots, noisy comments, oversized files, and build or syntax failures.
+<p align="center">
+  <strong>Catch risky JavaScript and TypeScript code before it reaches production.</strong>
+</p>
 
-## Why Use It?
+<p align="center">
+  A tiny CLI scanner for fast-moving projects, AI-assisted codebases, and teams
+  that want quick safety checks before commit, review, or deploy.
+</p>
 
-- Catch leaked API keys and committed `.env` files early.
-- Spot `console.*` and `debugger` statements before deploy.
-- Find TypeScript `any` usage that weakens type safety.
-- Surface TODO, FIXME, and HACK comments that may hide unfinished work.
-- Detect large source files that are becoming harder to maintain.
-- Run the project's build script to catch syntax and build errors.
+---
 
-## Install
+## What Is risk-lint?
 
-Install globally:
+`risk-lint` scans JavaScript and TypeScript projects for risky patterns such as
+leaked secrets, debug leftovers, weak TypeScript usage, noisy comments,
+oversized files, and build failures.
 
-```sh
-npm install -g risk-lint
-```
+By default it focuses on files changed in git, so it stays fast and useful in
+daily development.
 
-Or run without installing:
+## Quick Start
+
+Run without installing:
 
 ```sh
 npx risk-lint
 ```
 
-## Usage
-
-Run `risk-lint` from the root of your project:
+Or install globally:
 
 ```sh
+npm install -g risk-lint
 risk-lint
 ```
 
-Example output:
+Add a reusable npm script to your project:
 
-```txt
-Risk Lint
-Scanning project...
-
-✓ Syntax check passed
-✓ Scanned 42 files
-
-Findings
-
-HIGH src/api.ts:12:18
-│ Possible secret/API key detected
-
-MEDIUM src/App.tsx:34:3
-│ Console statement found
-
-Summary
-High: 1  Medium: 1  Low: 0
+```sh
+npx risk-lint init
+npm run risk
 ```
 
-If no risky patterns are found, the command prints a clean result.
+Scan the whole project:
 
-## What It Checks
+```sh
+risk-lint --all
+```
 
-| Check | Level |
+## Why Use It?
+
+| Signal | What it helps catch |
 | --- | --- |
-| Possible OpenAI, Google, AWS, and Telegram tokens | High |
-| `.env` files | High |
-| `debugger` statements | High |
-| Build or syntax failures from `npm run build`, `pnpm build`, or `yarn build` | High |
-| `console.log`, `console.warn`, `console.error`, and `console.debug` | Medium |
-| TypeScript `any` annotations | Medium |
-| Files over 500 lines | Medium |
-| TODO, FIXME, and HACK comments | Low |
+| High-risk secrets | API keys, tokens, and committed `.env` files |
+| Debug leftovers | `debugger` and `console.*` calls before deploy |
+| TypeScript weak spots | `any` usage that can hide bugs |
+| Unfinished work | TODO, FIXME, and HACK comments |
+| Maintainability drift | Source files growing past 500 lines |
+| Build confidence | Syntax and build failures from your package scripts |
+
+## Example Output
+
+<table>
+  <tr>
+    <td colspan="3">
+      <strong>Risk Lint</strong><br>
+      <sub>Scanning project...</sub>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="3">
+      <span style="color:#2ed573;">✓ Syntax check passed</span><br>
+      <span style="color:#2ed573;">✓ Scanned 42 files</span>
+    </td>
+  </tr>
+  <tr>
+    <th align="left">Level</th>
+    <th align="left">Location</th>
+    <th align="left">Finding</th>
+  </tr>
+  <tr>
+    <td><img src="https://img.shields.io/badge/HIGH-ff4757?style=flat-square" alt="High"></td>
+    <td><code>src/api.ts:12:18</code></td>
+    <td>Possible secret/API key detected</td>
+  </tr>
+  <tr>
+    <td><img src="https://img.shields.io/badge/MEDIUM-ffa502?style=flat-square" alt="Medium"></td>
+    <td><code>src/App.tsx:34:3</code></td>
+    <td>Console statement found</td>
+  </tr>
+  <tr>
+    <td colspan="3">
+      <strong>Summary</strong><br>
+      <img src="https://img.shields.io/badge/High-1-ff4757?style=flat-square" alt="High 1">
+      <img src="https://img.shields.io/badge/Medium-1-ffa502?style=flat-square" alt="Medium 1">
+      <img src="https://img.shields.io/badge/Low-0-2ed573?style=flat-square" alt="Low 0">
+    </td>
+  </tr>
+</table>
+
+Clean project? You get a clean result and can move on.
+
+## Checks
+
+| Level | Check |
+| --- | --- |
+| High | Possible OpenAI, Google, AWS, and Telegram tokens |
+| High | `.env` files |
+| High | `debugger` statements |
+| High | Build or syntax failures from `npm run build`, `pnpm build`, or `yarn build` |
+| Medium | `console.log`, `console.warn`, `console.error`, and `console.debug` |
+| Medium | TypeScript `any` annotations |
+| Medium | Files over 500 lines |
+| Low | TODO, FIXME, and HACK comments |
+
+## CLI Usage
+
+```sh
+# Scan changed files only
+risk-lint
+
+# Scan the entire project
+risk-lint --all
+
+# Use through npm without installing
+npx risk-lint
+
+# Add "risk": "risk-lint" to package.json scripts
+npx risk-lint init
+```
 
 ## Ignored Paths
 
-`risk-lint` skips common generated or dependency folders:
+`risk-lint` skips common generated, dependency, and build folders:
 
-- `node_modules`
-- `dist`
-- `build`
-- `.next`
-- `.nuxt`
-- `.astro`
-- `.vercel`
-- `.output`
-- `coverage`
-- `.git`
-- `*.d.ts`
-- `*.min.js`
+```txt
+node_modules
+dist
+build
+.next
+.nuxt
+.astro
+.vercel
+.output
+coverage
+.git
+*.d.ts
+*.min.js
+```
 
 ## CI Example
 
@@ -121,6 +186,12 @@ Run the TypeScript source directly while developing:
 
 ```sh
 npm run dev
+```
+
+Scan the full project while developing:
+
+```sh
+npm run dev -- --all
 ```
 
 ## Publishing

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import fg from "fast-glob";
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import pc from "picocolors";
 import { promisify } from "node:util";
@@ -22,6 +22,7 @@ const patterns = ["**/*.{js,jsx,ts,tsx,vue,svelte,astro}", ".env", ".env.*"];
 const issues = [];
 const execFileAsync = promisify(execFile);
 const spinnerFrames = ["-", "\\", "|", "/"];
+const sourceFilePattern = /\.(js|jsx|ts|tsx|vue|svelte|astro)$/;
 function writeLine(message = "") {
     process.stdout.write(`${message}\n`);
 }
@@ -81,6 +82,87 @@ function formatLevel(level) {
     if (level === "medium")
         return pc.yellow(pc.bold("MEDIUM"));
     return pc.gray(pc.bold("LOW"));
+}
+function getArgs() {
+    return {
+        all: process.argv.includes("--all"),
+        help: process.argv.includes("--help") || process.argv.includes("-h"),
+        init: process.argv.includes("init"),
+    };
+}
+function printHelp() {
+    writeLine();
+    writeLine(pc.bold("Risk Lint"));
+    writeLine();
+    writeLine("Usage:");
+    writeLine("  risk-lint         Scan changed files only");
+    writeLine("  risk-lint --all   Scan the full project and run build syntax check");
+    writeLine("  risk-lint init    Add a risk script to package.json");
+    writeLine();
+}
+async function initProject() {
+    const packageJsonPath = "package.json";
+    if (!(await fileExists(packageJsonPath))) {
+        writeError(`${pc.red("Error:")} package.json not found`);
+        process.exitCode = 1;
+        return;
+    }
+    const packageJson = JSON.parse(await fs.readFile(packageJsonPath, "utf8"));
+    packageJson.scripts ?? (packageJson.scripts = {});
+    if (packageJson.scripts.risk === "risk-lint") {
+        writeLine(`${pc.green("✓")} package.json already has ${pc.bold("risk")}`);
+        return;
+    }
+    if (packageJson.scripts.risk) {
+        writeError(`${pc.yellow("!")} package.json already has a risk script: ${pc.bold(packageJson.scripts.risk)}`);
+        writeError("Choose another script name or edit package.json manually.");
+        process.exitCode = 1;
+        return;
+    }
+    packageJson.scripts.risk = "risk-lint";
+    await fs.writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
+    writeLine(`${pc.green("✓")} Added ${pc.bold('"risk": "risk-lint"')}`);
+    writeLine(pc.gray("Run it with: npm run risk"));
+}
+function runGit(args) {
+    try {
+        return execFileSync("git", args, { encoding: "utf8" })
+            .split("\n")
+            .map((line) => line.trim())
+            .filter(Boolean);
+    }
+    catch {
+        return [];
+    }
+}
+function isGitRepo() {
+    return runGit(["rev-parse", "--is-inside-work-tree"])[0] === "true";
+}
+function isIgnored(file) {
+    const normalized = `/${file.split("\\").join("/")}`;
+    return ignore.some((pattern) => {
+        if (pattern === "**/*.d.ts")
+            return file.endsWith(".d.ts");
+        if (pattern === "**/*.min.js")
+            return file.endsWith(".min.js");
+        const folder = pattern.split("**/").join("").split("/**").join("");
+        return normalized.includes(`/${folder}/`);
+    });
+}
+function isScannableChangedFile(file) {
+    if (isIgnored(file))
+        return false;
+    if (file === ".env" || file.startsWith(".env."))
+        return true;
+    return sourceFilePattern.test(file);
+}
+function getChangedFiles() {
+    const files = [
+        ...runGit(["diff", "--name-only", "--diff-filter=ACMR"]),
+        ...runGit(["diff", "--cached", "--name-only", "--diff-filter=ACMR"]),
+        ...runGit(["ls-files", "--others", "--exclude-standard"]),
+    ];
+    return [...new Set(files)].filter(isScannableChangedFile);
 }
 function checkSecrets(file, content) {
     const secretPatterns = [
@@ -200,26 +282,40 @@ async function checkBuildSyntax() {
     }
 }
 async function main() {
+    const args = getArgs();
+    if (args.help) {
+        printHelp();
+        return;
+    }
+    if (args.init) {
+        await initProject();
+        return;
+    }
+    const scanAll = args.all || !isGitRepo();
     writeLine();
     writeLine(pc.bold("Risk Lint"));
-    writeLine(pc.gray("Scanning project..."));
+    writeLine(pc.gray(scanAll ? "Scanning project..." : "Scanning changed files..."));
     writeLine();
-    const buildSpinner = startSpinner("Checking project syntax");
-    await checkBuildSyntax();
-    const buildIssues = issues.filter((issue) => issue.message.includes("build") ||
-        /Expected|Unexpected|SyntaxError|Parse error/i.test(issue.message));
-    if (buildIssues.length > 0) {
-        buildSpinner.fail("Syntax check found issues");
+    if (scanAll) {
+        const buildSpinner = startSpinner("Checking project syntax");
+        await checkBuildSyntax();
+        const buildIssues = issues.filter((issue) => issue.message.includes("build") ||
+            /Expected|Unexpected|SyntaxError|Parse error/i.test(issue.message));
+        if (buildIssues.length > 0) {
+            buildSpinner.fail("Syntax check found issues");
+        }
+        else {
+            buildSpinner.succeed("Syntax check passed");
+        }
     }
-    else {
-        buildSpinner.succeed("Syntax check passed");
-    }
-    const scanSpinner = startSpinner("Scanning source files");
-    const files = await fg(patterns, {
-        ignore,
-        dot: true,
-        onlyFiles: true,
-    });
+    const scanSpinner = startSpinner(scanAll ? "Scanning source files" : "Scanning changed files");
+    const files = scanAll
+        ? await fg(patterns, {
+            ignore,
+            dot: true,
+            onlyFiles: true,
+        })
+        : getChangedFiles();
     for (const file of files) {
         const content = await fs.readFile(file, "utf8");
         checkSecrets(file, content);
@@ -228,7 +324,14 @@ async function main() {
         checkTodos(file, content);
         checkLargeFile(file, content);
     }
-    scanSpinner.succeed(`Scanned ${files.length} files`);
+    scanSpinner.succeed(scanAll
+        ? `Scanned ${files.length} files`
+        : `Scanned ${files.length} changed files`);
+    if (!scanAll && files.length === 0) {
+        writeLine();
+        writeLine(`${pc.green(pc.bold("Clean"))} No changed files to scan`);
+        return;
+    }
     if (issues.length === 0) {
         writeLine();
         writeLine(`${pc.green(pc.bold("Clean"))} No risky patterns found`);
