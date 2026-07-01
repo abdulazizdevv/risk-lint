@@ -305,6 +305,95 @@ function checkLargeFile(file: string, content: string) {
   }
 }
 
+function collectDeclaredNames(frontmatter: string) {
+  const declared = new Set<string>()
+
+  for (const match of frontmatter.matchAll(
+    /\b(?:const|let|var|function|class|interface|type)\s+([A-Za-z_$][\w$]*)/g,
+  )) {
+    declared.add(match[1])
+  }
+
+  for (const match of frontmatter.matchAll(
+    /\b(?:const|let|var)\s+\{([^}]+)\}/g,
+  )) {
+    for (const name of match[1].split(",")) {
+      const cleanName = name
+        .trim()
+        .split(":")
+        .pop()
+        ?.trim()
+        .match(/^[A-Za-z_$][\w$]*/)
+
+      if (cleanName) declared.add(cleanName[0])
+    }
+  }
+
+  for (const match of frontmatter.matchAll(
+    /\bimport\s+([A-Za-z_$][\w$]*)\b/g,
+  )) {
+    declared.add(match[1])
+  }
+
+  for (const match of frontmatter.matchAll(/\bimport\s+\{([^}]+)\}/g)) {
+    for (const name of match[1].split(",")) {
+      const cleanName = name
+        .trim()
+        .split(/\s+as\s+/)
+        .pop()
+        ?.trim()
+        .match(/^[A-Za-z_$][\w$]*/)
+
+      if (cleanName) declared.add(cleanName[0])
+    }
+  }
+
+  return declared
+}
+
+function checkAstroTemplateIdentifiers(file: string, content: string) {
+  if (!file.endsWith(".astro")) return
+
+  const sections = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/)
+  if (!sections) return
+
+  const frontmatter = sections[1]
+  const template = sections[2]
+  const templateOffset = sections[0].length - template.length
+  const declared = collectDeclaredNames(frontmatter)
+  const allowed = new Set([
+    "Astro",
+    "Array",
+    "Boolean",
+    "Date",
+    "JSON",
+    "Math",
+    "Number",
+    "Object",
+    "String",
+    "false",
+    "null",
+    "true",
+    "undefined",
+  ])
+
+  for (const match of template.matchAll(/\{([^{}]+)\}/g)) {
+    const expression = match[1].trim()
+
+    if (!/^[A-Za-z_$][\w$]*$/.test(expression)) continue
+    if (allowed.has(expression) || declared.has(expression)) continue
+
+    const location = getLocation(content, templateOffset + match.index + 1)
+    addIssue(
+      "high",
+      file,
+      `Possible undefined Astro template variable: ${expression}`,
+      location.line,
+      location.column,
+    )
+  }
+}
+
 async function fileExists(file: string) {
   try {
     await fs.access(file)
@@ -448,6 +537,7 @@ async function main() {
     checkAny(file, content)
     checkTodos(file, content)
     checkLargeFile(file, content)
+    checkAstroTemplateIdentifiers(file, content)
   }
   scanSpinner.succeed(
     scanAll
