@@ -9,14 +9,29 @@
   "scripts": {
     "dev": "tsx src/cli.ts",
     "build": "tsc",
-    "start": "node dist/cli.js"
+    "start": "node dist/cli.js",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "cli",
     "code-quality",
     "ai-code",
-    "scanner"
+    "scanner",
+    "risky-code",
+    "lint",
+    "code-analysis",
+    "code-review",
+    "code-security",
+    "risk"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/abdulazizdevv/risk-lint.git"
+  },
+  "bugs": {
+    "url": "https://github.com/abdulazizdevv/risk-lint/issues"
+  },
+  "homepage": "https://github.com/abdulazizdevv/risk-lint#readme",
   "license": "MIT",
   "files": [
     "dist",
