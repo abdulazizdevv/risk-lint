@@ -208,6 +208,16 @@ npm publish
 The package publishes the compiled `dist` folder, this README, and the MIT
 license.
 
+## Feedback
+
+Have an idea or found a bug?
+
+- 🐛 Open an [Issue](https://github.com/abdulazizdevv/risk-lint/issues)
+- 💡 Start a [Discussion](https://github.com/abdulazizdevv/risk-lint/discussions)
+- ⭐ Star the project if it helps you
+
+Contributions are always welcome.
+
 ## License
 
 MIT
